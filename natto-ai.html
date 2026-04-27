@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NATTO AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a08;
+    --surface: #111110;
+    --surface2: #1a1a17;
+    --border: #2a2a24;
+    --border-light: #3a3a30;
+    --text: #e8e4d8;
+    --text-muted: #7a7868;
+    --text-dim: #4a4a3a;
+    --accent: #c8b97a;
+    --accent-dim: #7a6e3a;
+    --accent-glow: rgba(200, 185, 122, 0.12);
+    --user-bg: #1c1c16;
+    --ai-bg: #131310;
+    --danger: #c87a7a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    overflow: hidden;
+  }
+
+  /* ── GRAIN OVERLAY ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 9999; opacity: 0.6;
+  }
+
+  /* ── AMBIENT GLOW ── */
+  .ambient {
+    position: fixed;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(200,185,122,0.06) 0%, transparent 70%);
+    top: -200px; left: 50%; transform: translateX(-50%);
+    pointer-events: none; z-index: 0;
+    animation: ambientPulse 8s ease-in-out infinite;
+  }
+  @keyframes ambientPulse {
+    0%,100% { opacity: 0.6; transform: translateX(-50%) scale(1); }
+    50% { opacity: 1; transform: translateX(-50%) scale(1.1); }
+  }
+
+  /* ── LAYOUT ── */
+  #app {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column;
+    height: 100vh; max-width: 780px;
+    margin: 0 auto; padding: 0 20px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 24px 0 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .logo-wrap { display: flex; align-items: baseline; gap: 10px; }
+
+  .logo {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 28px; font-weight: 300; letter-spacing: 0.18em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  .logo-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--accent); margin-bottom: 4px;
+    animation: dotBlink 3s ease-in-out infinite;
+  }
+  @keyframes dotBlink {
+    0%,100% { opacity: 1; } 50% { opacity: 0.3; }
+  }
+
+  .header-right { display: flex; align-items: center; gap: 16px; }
+
+  .rate-indicator {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; letter-spacing: 0.12em;
+    color: var(--text-muted); text-transform: uppercase;
+  }
+
+  .rate-dots { display: flex; gap: 4px; }
+  .rate-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); opacity: 0.8;
+    transition: all 0.3s ease;
+  }
+  .rate-dot.used { background: var(--text-dim); opacity: 0.3; }
+  .rate-dot.danger { background: var(--danger); opacity: 0.9; }
+
+  .btn-key {
+    background: none; border: 1px solid var(--border);
+    color: var(--text-muted); font-family: 'DM Mono', monospace;
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 6px 12px; cursor: pointer; border-radius: 2px;
+    transition: all 0.2s;
+  }
+  .btn-key:hover { border-color: var(--accent-dim); color: var(--accent); }
+
+  /* ── MESSAGES ── */
+  #messages {
+    flex: 1; overflow-y: auto; padding: 28px 0;
+    display: flex; flex-direction: column; gap: 24px;
+    scroll-behavior: smooth;
+  }
+  #messages::-webkit-scrollbar { width: 3px; }
+  #messages::-webkit-scrollbar-track { background: transparent; }
+  #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 14px; padding: 40px 0;
+    animation: fadeIn 0.8s ease;
+  }
+  .empty-icon {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 72px; font-weight: 300; line-height: 1;
+    color: var(--accent); opacity: 0.25;
+    letter-spacing: -4px;
+  }
+  .empty-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 22px; font-weight: 300; letter-spacing: 0.12em;
+    color: var(--text-muted);
+  }
+  .empty-sub {
+    font-size: 10px; letter-spacing: 0.15em; color: var(--text-dim);
+    text-transform: uppercase;
+  }
+  .suggestions {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    justify-content: center; margin-top: 8px;
+  }
+  .suggestion-chip {
+    border: 1px solid var(--border); padding: 8px 14px;
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    color: var(--text-muted); cursor: pointer; border-radius: 2px;
+    transition: all 0.2s; background: none;
+    letter-spacing: 0.04em;
+  }
+  .suggestion-chip:hover {
+    border-color: var(--accent-dim); color: var(--accent);
+    background: var(--accent-glow);
+  }
+
+  /* ── MESSAGE BUBBLES ── */
+  .message {
+    display: flex; flex-direction: column; gap: 6px;
+    animation: slideUp 0.35s cubic-bezier(0.16,1,0.3,1);
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg-label {
+    font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-dim); padding: 0 2px;
+  }
+  .message.user .msg-label { color: var(--accent-dim); }
+
+  .msg-body {
+    padding: 14px 18px; border-radius: 3px;
+    line-height: 1.75; font-size: 13px; letter-spacing: 0.02em;
+  }
+  .message.user .msg-body {
+    background: var(--user-bg);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--accent-dim);
+    color: var(--text);
+  }
+  .message.ai .msg-body {
+    background: var(--ai-bg);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--border-light);
+    color: var(--text);
+  }
+  .message.ai .msg-body p { margin-bottom: 10px; }
+  .message.ai .msg-body p:last-child { margin-bottom: 0; }
+  .message.ai .msg-body code {
+    background: var(--surface2); padding: 2px 6px;
+    border-radius: 2px; font-size: 11px; color: var(--accent);
+  }
+  .message.ai .msg-body pre {
+    background: var(--surface2); padding: 14px;
+    border-radius: 3px; overflow-x: auto; margin: 10px 0;
+    border: 1px solid var(--border);
+  }
+  .message.ai .msg-body pre code {
+    background: none; padding: 0; color: var(--text);
+  }
+
+  /* ── TYPING INDICATOR ── */
+  .typing-dots { display: flex; gap: 5px; padding: 4px 0; }
+  .typing-dots span {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--accent); opacity: 0.4;
+    animation: typingBounce 1.2s ease-in-out infinite;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes typingBounce {
+    0%,60%,100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-5px); opacity: 1; }
+  }
+
+  /* ── ERROR MESSAGE ── */
+  .msg-error {
+    font-size: 11px; color: var(--danger);
+    padding: 10px 14px; border: 1px solid rgba(200,122,122,0.2);
+    border-radius: 2px; background: rgba(200,122,122,0.05);
+    letter-spacing: 0.04em;
+  }
+
+  /* ── INPUT AREA ── */
+  .input-area {
+    flex-shrink: 0; padding: 16px 0 24px;
+    border-top: 1px solid var(--border);
+  }
+
+  .input-wrap {
+    position: relative; display: flex;
+    background: var(--surface);
+    border: 1px solid var(--border); border-radius: 3px;
+    transition: border-color 0.2s;
+  }
+  .input-wrap:focus-within { border-color: var(--accent-dim); }
+
+  #userInput {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--text); font-family: 'DM Mono', monospace;
+    font-size: 13px; line-height: 1.6; letter-spacing: 0.02em;
+    padding: 14px 16px; resize: none; max-height: 140px;
+    scrollbar-width: none;
+  }
+  #userInput::placeholder { color: var(--text-dim); }
+  #userInput::-webkit-scrollbar { display: none; }
+
+  #sendBtn {
+    background: none; border: none; cursor: pointer;
+    padding: 14px 16px; color: var(--text-dim);
+    transition: color 0.2s; align-self: flex-end;
+    font-size: 16px; line-height: 1;
+  }
+  #sendBtn:hover:not(:disabled) { color: var(--accent); }
+  #sendBtn:disabled { cursor: not-allowed; opacity: 0.3; }
+
+  .send-icon { display: block; }
+
+  .input-footer {
+    display: flex; justify-content: space-between;
+    padding: 8px 2px 0;
+    font-size: 9px; letter-spacing: 0.12em; color: var(--text-dim);
+    text-transform: uppercase;
+  }
+  #charCount { transition: color 0.2s; }
+
+  /* ── MODAL (API KEY) ── */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(10,10,8,0.92);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; } to { opacity: 1; }
+  }
+  .modal-overlay.hidden { display: none; }
+
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 36px; max-width: 420px; width: 100%;
+    animation: modalSlide 0.35s cubic-bezier(0.16,1,0.3,1);
+  }
+  @keyframes modalSlide {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .modal-logo {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 32px; font-weight: 300; letter-spacing: 0.2em;
+    color: var(--accent); text-align: center; margin-bottom: 6px;
+  }
+  .modal-subtitle {
+    text-align: center; font-size: 10px; letter-spacing: 0.15em;
+    color: var(--text-dim); text-transform: uppercase; margin-bottom: 32px;
+  }
+
+  .modal-label {
+    font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 8px; display: block;
+  }
+  .modal-input-wrap { position: relative; }
+  .modal-input {
+    width: 100%; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 2px;
+    color: var(--text); font-family: 'DM Mono', monospace;
+    font-size: 12px; padding: 12px 14px;
+    outline: none; letter-spacing: 0.04em;
+    transition: border-color 0.2s;
+  }
+  .modal-input:focus { border-color: var(--accent-dim); }
+  .modal-input::placeholder { color: var(--text-dim); }
+
+  .modal-hint {
+    font-size: 10px; color: var(--text-dim);
+    margin-top: 8px; letter-spacing: 0.04em; line-height: 1.5;
+  }
+  .modal-hint a { color: var(--accent-dim); text-decoration: none; }
+  .modal-hint a:hover { color: var(--accent); }
+
+  .modal-btn {
+    width: 100%; margin-top: 24px;
+    background: var(--accent-glow);
+    border: 1px solid var(--accent-dim);
+    color: var(--accent);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    padding: 13px; cursor: pointer; border-radius: 2px;
+    transition: all 0.2s;
+  }
+  .modal-btn:hover { background: rgba(200,185,122,0.18); }
+
+  .modal-error {
+    font-size: 11px; color: var(--danger); margin-top: 10px;
+    text-align: center; display: none;
+  }
+
+  /* ── RATE LIMIT TOAST ── */
+  .toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid rgba(200,122,122,0.4);
+    color: var(--danger); font-size: 11px; letter-spacing: 0.1em;
+    padding: 10px 20px; border-radius: 2px; z-index: 200;
+    opacity: 0; transition: opacity 0.3s;
+    pointer-events: none; white-space: nowrap;
+  }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 600px) {
+    .logo { font-size: 22px; }
+    .modal { padding: 28px 20px; }
+    .empty-icon { font-size: 54px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="ambient"></div>
+
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <div class="logo-wrap">
+      <span class="logo">Natto</span>
+      <div class="logo-dot"></div>
+    </div>
+    <div class="header-right">
+      <div class="rate-indicator">
+        <div class="rate-dots" id="rateDots">
+          <div class="rate-dot" id="dot1"></div>
+          <div class="rate-dot" id="dot2"></div>
+          <div class="rate-dot" id="dot3"></div>
+        </div>
+        <span id="rateLabel">3/3</span>
+      </div>
+
+    </div>
+  </header>
+
+  <div id="messages">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">Natto</div>
+      <div class="empty-title">Apa yang ingin kamu tanyakan?</div>
+      <div class="empty-sub">Limit · 3 pesan per menit</div>
+      <div class="suggestions">
+        <button class="suggestion-chip" onclick="useSuggestion(this)">Jelaskan cara kerja AI</button>
+        <button class="suggestion-chip" onclick="useSuggestion(this)">Tulis email profesional</button>
+        <button class="suggestion-chip" onclick="useSuggestion(this)">Debug kode saya</button>
+        <button class="suggestion-chip" onclick="useSuggestion(this)">Rangkum teks ini</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="input-wrap">
+      <textarea id="userInput" rows="1" placeholder="Ketik pesan..." maxlength="4000"></textarea>
+      <button id="sendBtn" title="Kirim">
+        <span class="send-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 8L14 2L10 8L14 14L2 8Z" fill="currentColor"/>
+          </svg>
+        </span>
+      </button>
+    </div>
+    <div class="input-footer">
+      <span>Enter kirim · Shift+Enter baris baru</span>
+      <span id="charCount">0 / 4000</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── STATE ──
+  let apiKey = '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';
+  let messages = [];
+  let isLoading = false;
+
+  // Rate limiting: 3 messages per 60s
+  const RATE_LIMIT = 3;
+  const RATE_WINDOW = 60000;
+  let messageTimestamps = JSON.parse(localStorage.getItem('natto_timestamps') || '[]');
+
+  // ── INIT ──
+  document.addEventListener('DOMContentLoaded', () => {
+    updateRateUI();
+    autoResize();
+  });
+
+  // ── MODAL ──
+  function showModal() {
+    document.getElementById('apiModal').classList.remove('hidden');
+    setTimeout(() => document.getElementById('apiKeyInput').focus(), 100);
+  }
+  function hideModal() {
+    document.getElementById('apiModal').classList.add('hidden');
+  }
+
+
+
+  // ── RATE LIMITING ──
+  function getAvailableMessages() {
+    const now = Date.now();
+    messageTimestamps = messageTimestamps.filter(t => now - t < RATE_WINDOW);
+    localStorage.setItem('natto_timestamps', JSON.stringify(messageTimestamps));
+    return RATE_LIMIT - messageTimestamps.length;
+  }
+
+  function recordMessage() {
+    messageTimestamps.push(Date.now());
+    localStorage.setItem('natto_timestamps', JSON.stringify(messageTimestamps));
+  }
+
+  function getNextResetIn() {
+    if (messageTimestamps.length === 0) return 0;
+    const oldest = Math.min(...messageTimestamps);
+    const resetAt = oldest + RATE_WINDOW;
+    return Math.max(0, Math.ceil((resetAt - Date.now()) / 1000));
+  }
+
+  function updateRateUI() {
+    const avail = getAvailableMessages();
+    const used = RATE_LIMIT - avail;
+    const dots = ['dot1', 'dot2', 'dot3'];
+    dots.forEach((id, i) => {
+      const dot = document.getElementById(id);
+      dot.className = 'rate-dot';
+      if (i < used) {
+        dot.classList.add(avail === 0 ? 'danger' : 'used');
+      }
+    });
+    document.getElementById('rateLabel').textContent = `${avail}/${RATE_LIMIT}`;
+    // Refresh every second when limited
+    if (avail < RATE_LIMIT) {
+      setTimeout(updateRateUI, 1000);
+    }
+  }
+
+  // ── TOAST ──
+  function showToast(msg, duration = 3000) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), duration);
+  }
+
+  // ── CHAT ──
+  document.getElementById('sendBtn').addEventListener('click', sendMessage);
+  document.getElementById('userInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  document.getElementById('userInput').addEventListener('input', () => {
+    autoResize();
+    const len = document.getElementById('userInput').value.length;
+    const cc = document.getElementById('charCount');
+    cc.textContent = `${len} / 4000`;
+    cc.style.color = len > 3800 ? 'var(--danger)' : 'var(--text-dim)';
+  });
+
+  function autoResize() {
+    const ta = document.getElementById('userInput');
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 140) + 'px';
+  }
+
+  function useSuggestion(btn) {
+    document.getElementById('userInput').value = btn.textContent;
+    document.getElementById('emptyState')?.remove();
+    autoResize();
+    document.getElementById('userInput').focus();
+  }
+
+  async function sendMessage() {
+    const input = document.getElementById('userInput');
+    const text = input.value.trim();
+    if (!text || isLoading) return;
+    if (!apiKey) return;
+
+    const avail = getAvailableMessages();
+    if (avail <= 0) {
+      const secs = getNextResetIn();
+      showToast(`⏳ Limit tercapai. Reset dalam ${secs} detik.`, 4000);
+      return;
+    }
+
+    // Clear empty state
+    document.getElementById('emptyState')?.remove();
+
+    // Add user message
+    messages.push({ role: 'user', content: text });
+    appendMessage('user', text);
+    input.value = '';
+    input.style.height = 'auto';
+    document.getElementById('charCount').textContent = '0 / 4000';
+
+    recordMessage();
+    updateRateUI();
+
+    // Show typing
+    const typingEl = appendTyping();
+    isLoading = true;
+    document.getElementById('sendBtn').disabled = true;
+
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: 'Kamu adalah NATTO AI, asisten yang cerdas, ringkas, dan membantu. Jawab dalam bahasa yang sama dengan pertanyaan pengguna. Bila diminta bahasa Indonesia, gunakan bahasa Indonesia yang baik.' },
+            ...messages
+          ],
+          max_tokens: 1024,
+          temperature: 0.7
+        })
+      });
+
+      typingEl.remove();
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          appendError('API key tidak valid. Klik "API Key" untuk mengganti.');
+        } else {
+          appendError(`Error ${res.status}: ${err?.error?.message || 'Gagal menghubungi Groq.'}`);
+        }
+      } else {
+        const data = await res.json();
+        const reply = data.choices?.[0]?.message?.content || '...';
+        messages.push({ role: 'assistant', content: reply });
+        appendMessage('ai', reply);
+      }
+    } catch (e) {
+      typingEl.remove();
+      appendError('Koneksi gagal. Periksa internet kamu.');
+    }
+
+    isLoading = false;
+    document.getElementById('sendBtn').disabled = false;
+    input.focus();
+  }
+
+  function appendMessage(role, content) {
+    const container = document.getElementById('messages');
+    const wrap = document.createElement('div');
+    wrap.className = `message ${role}`;
+
+    const label = document.createElement('div');
+    label.className = 'msg-label';
+    label.textContent = role === 'user' ? 'Kamu' : 'Natto AI';
+
+    const body = document.createElement('div');
+    body.className = 'msg-body';
+
+    if (role === 'ai') {
+      body.innerHTML = formatAI(content);
+    } else {
+      body.textContent = content;
+    }
+
+    wrap.appendChild(label);
+    wrap.appendChild(body);
+    container.appendChild(wrap);
+    container.scrollTop = container.scrollHeight;
+    return wrap;
+  }
+
+  function appendTyping() {
+    const container = document.getElementById('messages');
+    const wrap = document.createElement('div');
+    wrap.className = 'message ai';
+
+    const label = document.createElement('div');
+    label.className = 'msg-label';
+    label.textContent = 'Natto AI';
+
+    const body = document.createElement('div');
+    body.className = 'msg-body';
+    body.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+
+    wrap.appendChild(label);
+    wrap.appendChild(body);
+    container.appendChild(wrap);
+    container.scrollTop = container.scrollHeight;
+    return wrap;
+  }
+
+  function appendError(msg) {
+    const container = document.getElementById('messages');
+    const el = document.createElement('div');
+    el.className = 'msg-error';
+    el.textContent = '⚠ ' + msg;
+    container.appendChild(el);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  // ── FORMAT AI RESPONSE ──
+  function formatAI(text) {
+    // Code blocks
+    text = text.replace(/```(\w+)?\n([\s\S]*?)```/g, (_, lang, code) =>
+      `<pre><code>${escapeHtml(code.trim())}</code></pre>`);
+    // Inline code
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // Bold
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Paragraphs
+    const lines = text.split('\n').filter(l => l.trim() !== '');
+    return lines.map(l => l.startsWith('<pre>') ? l : `<p>${l}</p>`).join('');
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+</script>
+</body>
+</html>
